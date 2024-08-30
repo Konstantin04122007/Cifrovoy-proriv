@@ -13,9 +13,9 @@ import easyocr
 app = Flask(__name__)
 
 
-catalog = 'b1gdh5aojcc3uodpguig'
-identifier = 'aje0j8i4np1j2gbdp1fe'
-apikey = 'AQVNwJokS-QzFBbche5jNXoMSf4EFzfLWG4XoddN'
+catalog = ''
+identifier = ''
+apikey = ''
 
 
 @app.route('/')
