@@ -15,7 +15,12 @@
     <main>
         <form action="/upload" method="post" enctype="multipart/form-data">
             <input type="file" name="file" required><br>
-            <button type="submit">Загрузить</button>
+            <button type="submit">Загрузить лицевую сторону этикетки</button>
+        </form>
+        <br>
+        <form action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" required><br>
+            <button type="submit">Загрузить обратную сторону этикетки</button>
         </form>
 
         {% if text %}
