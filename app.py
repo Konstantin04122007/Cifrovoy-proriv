@@ -1,16 +1,21 @@
+import requests
 from flask import Flask, request, render_template
 import pytesseract
-import cv2
+import cv2 as cv
 import os
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from string import punctuation
-from nltk import pos_tag
+import nltk
+import string
+from pymorphy3 import MorphAnalyzer
+import numpy as np
+import easyocr
+
 
 app = Flask(__name__)
 
-# Путь к Tesseract OCR
-pytesseract.pytesseract.tesseract_cmd = r'"C:\Users\User\Downloads\tesseract-ocr-w64-setup-5.4.0.20240606.exe"'
+
+catalog = 'b1gdh5aojcc3uodpguig'
+identifier = 'aje0j8i4np1j2gbdp1fe'
+apikey = 'AQVNwJokS-QzFBbche5jNXoMSf4EFzfLWG4XoddN'
 
 
 @app.route('/')
@@ -31,103 +36,180 @@ def upload_file():
     filepath = os.path.join('static/uploads', file.filename)
     file.save(filepath)
 
-    # Обработка изображения
-    text = process_image(filepath)
+    # Анализ текста
+    analysis_result = analyze_text(filepath, True)
+
+    return render_template('index.html', analysis=analysis_result)
+
+
+@app.route('/upload_back', methods=['POST'])
+def upload_file_back():
+    if 'file' not in request.files:
+        return "No file part"
+
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file"
+
+    # Сохранение файла
+    filepath = os.path.join('static/uploads', file.filename)
+    file.save(filepath)
 
     # Анализ текста
-    analysis_result = analyze_text(text)
+    analysis_result = analyze_text(filepath, False)
 
-    return render_template('index.html', text=text, analysis=analysis_result)
+    return render_template('index.html', analysis=analysis_result)
+
+def classificator_response(text, catalog, identifier, apikey):
+    headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Api-Key {apikey}",
+                "x-folder-id": identifier
+            }
+    
+    text = text_cleaner(text)
+
+    prompt_text = {
+            "modelUri": f"cls://{catalog}/yandexgpt/latest",
+            "taskDescription": "определить есть ли 1",
+            "labels": [
+                "1",
+                "0",
+            ],
+            "text": text,
+            "samples": [{"text": "детск каш без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш рисов каш гипоаллерген безмолочн рост бифидобактер без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш кукурузн каш безмолочн рост без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш каш безмолочн рост без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "каш безмолочн сахар " , "label": "1" },
+                {"text": "кашк молочн 100 natural сахар " , "label": "1" },
+                {"text": "100 natural каш молочн " , "label": "1" },
+                {"text": "рисов каш тройн польз 100 залк 12 " , "label": "1" },
+                {"text": "гречнев каш тройн польз 100 залк 12 гипоаллерген клиническ доказа " , "label": "1" },
+                {"text": "рисвов кашк груш белк энерг омег 3 развит интеллект гипоаллерген клиническ доказа " , "label": "1" },
+                {"text": "гречнев каш тройн польз 100 залк 12 гипоаллерген клиническ доказа " , "label": "1" },
+                {"text": "кашк молочн 100 natural сахар " , "label": "1" },
+                {"text": "каш 100 natural добавл " , "label": "1" },
+                {"text": "детск каш гипоаллерген безмолочн рост бифидобактер без пальмов без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш рисов каш гипоаллерген безмолочн рост бифидобактер без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш кукурузн каш безмолочн рост бифидобактер без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "детск каш каш безмолочн рост бифидобактер без пальмов масл c b1 омега3 " , "label": "1" },
+                {"text": "каш безмолочн добавлен сахар " , "label": "1" },
+                {"text": "кашк молочн 100 natural добавлен сахар " , "label": "1" },
+                {"text": "100 natural каш молочн " , "label": "1" },
+                {"text": "кашк молочн 100 natural добавлен сахар " , "label": "1" },
+                {"text": "каш яблок банан безмолочн поддержк иммунитет рост " , "label": "1" },
+                {"text": "гречнев каш гипоаллерген безмолочн дополнительн витамин минерал " , "label": "1" },
+                {"text": "пшен каш тыкв морков добавлен сахар подход дет аллерг " , "label": "1" },
+                {"text": "ячнев каш черник безмолочн бифидобактер укреплен иммунитет " , "label": "1" },
+                {"text": "каш четырех злак малин добавлен сахар вкус " , "label": "1" },
+                {"text": "каш мультизлаков чернослив глют гипоаллерген дополнительн витамин " , "label": "1" },
+                {"text": "каш персик добавлен сахар подход " , "label": "1" },
+                {"text": "детск каш кукурузн каш безмолочн " , "label": "0" },
+                {"text": "детск каш каш безмолочн " , "label": "0" },
+                {"text": "каш безмолочн " , "label": "0" },
+                {"text": "детск каш каш " , "label": "0" },
+                {"text": "детск каш рисов каш безмолочн " , "label": "0" },
+                {"text": "детск каш гречнев каш " , "label": "0" },
+                {"text": "детск каш кукурузн каш безмолочн " , "label": "0" },
+                {"text": "детск каш гречнев каш " , "label": "0" },
+                {"text": "детск каш мультизлаков каш пят злак безмолочн " , "label": "0" },
+                {"text": "каш молочн " , "label": "0" },
+                {"text": "детск каш рисов каш молочн " , "label": "0" },
+                {"text": "детск каш рисов каш яблок молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш кураг молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш ягод молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш банан безмолочн " , "label": "0" },
+                {"text": "детск каш рисов каш банан молочн " , "label": "0" },
+                {"text": "детск каш пшеничн каш тыкв молочн " , "label": "0" },
+                {"text": "детск каш пшеничн каш тыкв безмолочн " , "label": "0" },
+                {"text": "детск каш каш яблок молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш молочн " , "label": "0" },
+                {"text": "детск каш кукурузн каш молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш груш банан молочн " , "label": "0" },
+                {"text": "детск каш гречнев каш яблок банан молочн " , "label": "0" },
+                {"text": "детск каш мультизлаков каш пят злак молочн " , "label": "0" },
+                {"text": "детск каш мультизлаков каш груш персик молочн " , "label": "0" },
+                {"text": "детск каш мультизлаков каш яблок черник малин молочн " , "label": "0" },
+                {"text": "яблок " , "label": "0" },]
+            }
+    response = requests.post(
+        'https://llm.api.cloud.yandex.net/foundationModels/v1/fewShotTextClassification',
+        json=prompt_text, headers=headers
+    )
+    predictions = response.json()['predictions']
+    result = max(predictions, key=lambda x: x['confidence'])['label']
+    return result
 
 
-def process_image(filepath):
-    # Чтение изображения
-    img = cv2.imread(filepath)
-    # Преобразование в серый цвет
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # Применение OCR
-    text = pytesseract.image_to_string(gray)
-    return text
-
-
-def analyze_text(text):
-    # Пример анализа текста
-    # Здесь можно использовать NLTK
-    age_recommendation = extract_age(text)
-    marketing_claims = extract_marketing_claims(text)
-    return f"Минимальный целевой возраст: {age_recommendation}, Маркетинговые декларации: {marketing_claims}"
-
-def extract_age(text):
+def text_cleaner(text):
+    text = text.lower()
     # Токенизация текста
-    tokens = word_tokenize(text)
+    tokens = nltk.tokenize.word_tokenize(text)
 
     # Удаление стоп-слов и знаков препинания
-    russian_stopwords = stopwords.words("russian")
-    table = str.maketrans('', '', punctuation)
+    russian_stopwords = nltk.corpus.stopwords.words("russian")
+    additional_punctuation = '—«».“”№‹›…\\-®`\'’‘'
+    table = str.maketrans('', '', string.punctuation)
+    table = str.maketrans('', '', additional_punctuation)
     filtered_tokens = [token.translate(table) for token in tokens if
-                       token.lower() not in russian_stopwords and token.strip() not in punctuation]
+                    token.lower() not in russian_stopwords and token.strip() not in string.punctuation]
 
-    # Поиск чисел и возрастных указаний
-    def find_age_indication(tokens):
-        age_indications = ["лет", "года", "год"]
+
+    morph = MorphAnalyzer()
+    def is_meaningful(word):
+        # Проверка на существование в русском языке через pymorphy3
+        parsed_word = morph.parse(word.lower())[0]
+        if (parsed_word.tag.POS == 'NOUN' or parsed_word.tag.POS == 'ADJF' or parsed_word.tag.POS == 'ADJS' or parsed_word.tag.POS == 'PREP') and len(word) > 1 and word.isalpha():
+            return True
+        return False
+    
+    # Стемминг
+    filtered_tokens = [word for word in filtered_tokens if is_meaningful(word)]
+    snowball = nltk.stem.SnowballStemmer(language="russian")
+    stemmed_tokens = [snowball.stem(token) for token in filtered_tokens]
+    def combine_tokens(tokens):
+        res = ''
         for token in tokens:
-            if token.isdigit():
-                for indication in age_indications:
-                    if indication in tokens[tokens.index(token) + 1]:
-                        return token
-        return None
-
-    age = find_age_indication(filtered_tokens)
-
-    # Валидация возраста
-    def validate_age(age):
-        if age and age.isdigit() and 0 < int(age) < 100:
-            return int(age)
-        return None
-
-    min_age = validate_age(age)
-    return min_age
+            res += token + ' '
+        return res
+    return combine_tokens(stemmed_tokens)
 
 
-def extract_marketing_claims(text):
-    # Токенизация текста
-    tokens = word_tokenize(text)
+def age_classificator(text):
+    text = text_cleaner(text)
 
-    # Удаление стоп-слов и знаков препинания
-    russian_stopwords = stopwords.words("russian")
-    table = str.maketrans('', '', punctuation)
-    filtered_tokens = [token.translate(table) for token in tokens if
-                       token.lower() not in russian_stopwords and token.strip() not in punctuation]
+    key = text.find('месяц') - 2
+    age = int(text[key])
+    
+    if age < 6:
+        print('Обнаружено заявление об отказе от рекомендаций общественного здравоохранения')
 
-    # Частеречная разметка
-    tagged_tokens = pos_tag(filtered_tokens)
+def analyze_text(image_path, front:bool):
+    processed_image = process_image(image_path)
+    extracted_text = recognize_text(processed_image)
+    if front:
+        return classificator_response(extracted_text, catalog, identifier, apikey)
+    else:
+        age_classificator(extracted_text)
 
-    # Поиск маркетинговых деклараций
-    def find_marketing_claims(tagged_tokens):
-        marketing_claims = []
-        for token, tag in tagged_tokens:
-            if tag in ["ADJF", "ADJS", "VERB", "NOUN"] and token.lower() not in russian_stopwords:
-                marketing_claims.append(token)
-        return marketing_claims
 
-    claims = find_marketing_claims(tagged_tokens)
+def initialize_reader(languages=['en', 'ru']):
+    return easyocr.Reader(languages)
 
-    # Объединение ключевых фраз
-    def combine_claims(claims, tokens):
-        combined_claims = []
-        claim = ""
-        for token in tokens:
-            if token in claims:
-                claim += token + " "
-            elif claim:
-                combined_claims.append(claim.strip())
-                claim = ""
-        if claim:
-            combined_claims.append(claim.strip())
-        return combined_claims
+def process_image(image_path):
+    img = cv.imread(image_path)
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    resized = cv.resize(gray, None, fx=2, fy=2, interpolation=cv.INTER_CUBIC)
+    retval, binary = cv.threshold(resized, 160, 255, cv.THRESH_BINARY)
+    denoised = cv.GaussianBlur(binary, (3, 3), 0)
+    return denoised
 
-    combined_claims = combine_claims(claims, filtered_tokens)
-    return combined_claims
+def recognize_text(image, reader):
+    results = reader.readtext(image, detail=0)
+    return results
+
 
 if __name__ == '__main__':
     app.run(debug=True)
