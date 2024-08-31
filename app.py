@@ -60,7 +60,16 @@ def upload_file_back():
 
     return render_template('index.html', analysis=analysis_result)
 
+
+def extract_text_from_image(processed_image):
+    """Извлекает текст из предварительно обработанного изображения."""
+    custom_config = '--psm 4 -c tessedit_char_whitelist= .,абвгдеёжзийклмнопрстуфхцчшщъыьэюя0123456789'
+    text = pytesseract.image_to_string(processed_image, lang='rus', config=custom_config)
+    return text
+
+
 def classificator_response(text, catalog, identifier, apikey):
+    print(text)
     headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Api-Key {apikey}",
@@ -144,6 +153,8 @@ def classificator_response(text, catalog, identifier, apikey):
 
 
 def text_cleaner(text):
+    if isinstance(text, list):
+        text = ' '.join(text)
     text = text.lower()
     # Токенизация текста
     tokens = nltk.tokenize.word_tokenize(text)
@@ -160,6 +171,8 @@ def text_cleaner(text):
     morph = MorphAnalyzer()
     def is_meaningful(word):
         # Проверка на существование в русском языке через pymorphy3
+        if word.isdigit():
+            return True
         parsed_word = morph.parse(word.lower())[0]
         if (parsed_word.tag.POS == 'NOUN' or parsed_word.tag.POS == 'ADJF' or parsed_word.tag.POS == 'ADJS' or parsed_word.tag.POS == 'PREP') and len(word) > 1 and word.isalpha():
             return True
@@ -179,20 +192,28 @@ def text_cleaner(text):
 
 def age_classificator(text):
     text = text_cleaner(text)
-
     key = text.find('месяц') - 2
     age = int(text[key])
     
     if age < 6:
-        print('Обнаружено заявление об отказе от рекомендаций общественного здравоохранения')
+        return 'Обнаружено заявление об отказе от рекомендаций общественного здравоохранения'
+    else:
+        return 'Недопустимые заявления не обнаружены'
+
 
 def analyze_text(image_path, front:bool):
     processed_image = process_image(image_path)
-    extracted_text = recognize_text(processed_image)
     if front:
-        return classificator_response(extracted_text, catalog, identifier, apikey)
+        reader = easyocr.Reader(['en', 'ru'])
+        extracted_text = recognize_text(processed_image, reader)
+        res = classificator_response(extracted_text, catalog, identifier, apikey)
+        if res == '0':
+            return 'Маркетинговые фразы не обнаружены'
+        return 'Обнаружены маркетинговые фразы'
     else:
-        age_classificator(extracted_text)
+        extracted_text = extract_text_from_image(processed_image)
+        return age_classificator(extracted_text)
+    
 
 
 def initialize_reader(languages=['en', 'ru']):
